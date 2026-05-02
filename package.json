@@ -9,11 +9,11 @@
     "dev": "tsx src/index.ts"
   },
   "keywords": ["opencode", "telegram", "bot", "remote", "coding", "ai"],
-  "author": "triyuga",
+  "author": "ocdewe",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/triyuga/opencode-telebot.git"
+    "url": "https://github.com/ocdewe/opencode-telebot.git"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

@@ -48,7 +48,7 @@ Control [OpenCode](https://github.com/nicepkg/opencode) from your phone via Tele
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/triyuga/opencode-telebot.git
+git clone https://github.com/ocdewe/opencode-telebot.git
 cd opencode-telebot
 npm install
 ```
