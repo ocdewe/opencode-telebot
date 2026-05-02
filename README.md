@@ -146,7 +146,13 @@ journalctl -u telebot -f
 
 ## ⚙️ OpenCode Configuration
 
-Make sure OpenCode is configured with at least one provider. Example `~/.config/opencode/opencode.json`:
+Make sure OpenCode is configured with at least one provider.
+
+Config location:
+- **Linux:** `~/.config/opencode/opencode.json`
+- **Windows:** `C:\Users\<username>\.config\opencode\opencode.json`
+
+Example:
 
 ```json
 {
