@@ -45,7 +45,15 @@ Control [OpenCode](https://github.com/nicepkg/opencode) from your phone via Tele
 - [OpenCode CLI](https://github.com/nicepkg/opencode) installed and configured
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
 
-### 1. Clone & Install
+### 1. Create Telegram Bot
+
+1. Buka [@BotFather](https://t.me/BotFather) di Telegram
+2. Ketik `/newbot`
+3. Kasih nama bot (contoh: `My OpenCode Bot`)
+4. Kasih username bot (harus diakhiri `bot`, contoh: `myopencode_bot`)
+5. Copy **Bot Token** yang dikasih BotFather — simpan untuk `.env`
+
+### 2. Clone & Install
 
 ```bash
 git clone https://github.com/ocdewe/opencode-telebot.git
@@ -53,7 +61,7 @@ cd opencode-telebot
 npm install
 ```
 
-### 2. Configure
+### 3. Configure
 
 ```bash
 cp .env.example .env
@@ -70,7 +78,7 @@ DEFAULT_MODEL=your-provider/model-name
 
 > 💡 Get your Telegram user ID by messaging [@userinfobot](https://t.me/userinfobot) or using `/id` command after starting the bot with `ALLOWED_USER_IDS` empty.
 
-### 3. Run
+### 4. Run
 
 **Linux:**
 ```bash
