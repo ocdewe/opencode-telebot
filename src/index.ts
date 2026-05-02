@@ -1219,6 +1219,7 @@ bot.on("message:text", async (ctx) => {
 bot.api.setMyCommands([
   { command: "start", description: "🖥️ Info & status" },
   { command: "help", description: "📖 Bantuan" },
+  { command: "session", description: "📋 Info session aktif" },
   { command: "sessions", description: "📋 List semua session" },
   { command: "switch", description: "🔀 Switch session" },
   { command: "label", description: "🏷️ Label session" },
@@ -1228,10 +1229,12 @@ bot.api.setMyCommands([
   { command: "continue", description: "▶️ Lanjut session terakhir" },
   { command: "model", description: "🧠 Ganti model" },
   { command: "agent", description: "🤖 Ganti agent" },
+  { command: "dir", description: "📁 Ganti working directory" },
   { command: "stop", description: "🛑 Stop/interrupt proses" },
   { command: "timeout", description: "⏱️ Set timeout (menit)" },
   { command: "extend", description: "⏱️+ Tambah waktu saat jalan" },
   { command: "shell", description: "⚡ Shell command" },
+  { command: "status", description: "📊 Info sistem" },
   { command: "reset", description: "🔄 Force reset" },
 ]);
 
