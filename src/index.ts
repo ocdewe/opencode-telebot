@@ -5,6 +5,7 @@ import { promisify } from "util";
 import os from "os";
 import fs from "fs";
 import path from "path";
+import Database from "better-sqlite3";
 
 const execAsync = promisify(exec);
 
@@ -1095,6 +1096,69 @@ bot.command("shell", async (ctx) => {
 // --- /status ---
 const BOT_START_TIME = Date.now();
 
+// --- Helper: Get OpenCode DB path ---
+function getOpenCodeDbPath(): string {
+  const home = os.homedir();
+  return path.join(home, ".local", "share", "opencode", "opencode.db");
+}
+
+// --- Helper: Get session context (tokens, cost) from OpenCode DB ---
+interface SessionContext {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cost: number;
+  messages: number;
+  compactions: number;
+}
+
+function getSessionContext(sessionId: string): SessionContext | null {
+  const dbPath = getOpenCodeDbPath();
+  if (!fs.existsSync(dbPath)) return null;
+
+  try {
+    const db = new Database(dbPath, { readonly: true });
+
+    const row = db.prepare(`
+      SELECT 
+        COALESCE(SUM(json_extract(data, '$.tokens.input')), 0) as input_tokens,
+        COALESCE(SUM(json_extract(data, '$.tokens.output')), 0) as output_tokens,
+        COALESCE(SUM(json_extract(data, '$.cost')), 0) as cost,
+        COUNT(*) as msg_count
+      FROM message 
+      WHERE session_id = ?
+      AND json_extract(data, '$.role') = 'assistant'
+    `).get(sessionId) as any;
+
+    const compactions = db.prepare(`
+      SELECT COUNT(*) as cnt FROM session_entry 
+      WHERE session_id = ? AND type = 'summary'
+    `).get(sessionId) as any;
+
+    db.close();
+
+    if (!row) return null;
+
+    return {
+      inputTokens: row.input_tokens || 0,
+      outputTokens: row.output_tokens || 0,
+      totalTokens: (row.input_tokens || 0) + (row.output_tokens || 0),
+      cost: row.cost || 0,
+      messages: row.msg_count || 0,
+      compactions: compactions?.cnt || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// --- Helper: Format token count ---
+function formatTokens(n: number): string {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+  if (n >= 1000) return (n / 1000).toFixed(1) + "k";
+  return n.toString();
+}
+
 bot.command("status", async (ctx) => {
   const userId = ctx.from!.id;
   const session = getSession(userId);
@@ -1112,6 +1176,21 @@ bot.command("status", async (ctx) => {
   // Count total sessions
   const ocSessions = await getOpenCodeSessions();
   const totalSessions = ocSessions.length;
+
+  // Context info from OpenCode DB
+  let contextInfo = "";
+  if (session.sessionId) {
+    const ctx_data = getSessionContext(session.sessionId);
+    if (ctx_data) {
+      contextInfo =
+        `\n<b>🧮 Context:</b>\n` +
+        `• Tokens: ${formatTokens(ctx_data.inputTokens)} in / ${formatTokens(ctx_data.outputTokens)} out\n` +
+        `• Total: ${formatTokens(ctx_data.totalTokens)}\n` +
+        `• Cost: $${ctx_data.cost.toFixed(4)}\n` +
+        `• Messages: ${ctx_data.messages}\n` +
+        `• Compactions: ${ctx_data.compactions}\n`;
+    }
+  }
 
   // Disk usage (best effort)
   let diskInfo = "";
@@ -1137,8 +1216,9 @@ bot.command("status", async (ctx) => {
       `• Agent: <code>${session.agent}</code>\n` +
       `• Dir: <code>${session.workDir}</code>\n` +
       `• Timeout: ${timeoutMin} menit\n` +
-      `• Total sessions: ${totalSessions}\n\n` +
-      `<b>🖥️ System:</b>\n` +
+      `• Total sessions: ${totalSessions}\n` +
+      contextInfo +
+      `\n<b>🖥️ System:</b>\n` +
       `• OS: ${os.type()} ${os.release()}\n` +
       `• CPU: ${cpus[0]?.model || "?"} (${cpus.length} cores)\n` +
       `• RAM: ${usedMem} / ${totalMem} GB\n` +

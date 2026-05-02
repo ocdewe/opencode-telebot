@@ -8,7 +8,14 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts"
   },
-  "keywords": ["opencode", "telegram", "bot", "remote", "coding", "ai"],
+  "keywords": [
+    "opencode",
+    "telegram",
+    "bot",
+    "remote",
+    "coding",
+    "ai"
+  ],
   "author": "Tri Yudhi Prawira",
   "license": "MIT",
   "repository": {
@@ -16,10 +23,12 @@
     "url": "https://github.com/ocdewe/opencode-telebot.git"
   },
   "dependencies": {
+    "better-sqlite3": "^12.9.0",
     "dotenv": "^16.4.7",
     "grammy": "^1.35.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.10.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
