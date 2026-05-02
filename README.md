@@ -72,15 +72,21 @@ DEFAULT_MODEL=your-provider/model-name
 
 ### 3. Run
 
-**Development:**
+**Linux:**
 ```bash
-npx tsx src/index.ts
+./telebot.sh
 ```
 
-**Production (build first):**
+**Windows:**
 ```bash
-npm run build
-npm start
+telebot.bat
+```
+
+**Or with npm:**
+```bash
+npm run dev          # development (tsx)
+npm run build        # compile TypeScript
+npm start            # production (node)
 ```
 
 ## 🖥️ Platform Setup
@@ -97,7 +103,7 @@ Create a shortcut to `telebot.bat` and set "Run as administrator" in Properties 
 **PowerShell function (add to `$PROFILE`):**
 ```powershell
 function telebot {
-  Start-Process powershell -Verb RunAs -ArgumentList "-NoExit", "-Command", "cd 'C:\path\to\opencode-telegram-remote'; npx tsx src/index.ts"
+  Start-Process powershell -Verb RunAs -ArgumentList "-NoExit", "-Command", "cd 'C:\path\to\opencode-telebot'; npx tsx src/index.ts"
 }
 ```
 
@@ -117,9 +123,9 @@ shift
 opencode "$@" > "$OUTFILE" 2>/dev/null
 ```
 
-3. Make executable:
+3. Make scripts executable:
 ```bash
-chmod +x run_oc.sh
+chmod +x telebot.sh run_oc.sh
 ```
 
 4. **Systemd service (auto-start on boot):**
@@ -166,12 +172,13 @@ Make sure OpenCode is configured with at least one provider. Example `~/.config/
 ## 🏗️ Project Structure
 
 ```
-opencode-telegram-remote/
+opencode-telebot/
 ├── src/
 │   └── index.ts          # Main bot code (cross-platform)
-├── run_oc.sh             # Linux wrapper script
+├── telebot.sh            # Linux launcher
 ├── telebot.bat           # Windows launcher
 ├── telebot.service       # Systemd service definition
+├── run_oc.sh             # Linux wrapper script (output capture)
 ├── .env.example          # Environment template
 ├── package.json
 └── tsconfig.json
