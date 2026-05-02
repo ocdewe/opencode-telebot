@@ -1093,19 +1093,57 @@ bot.command("shell", async (ctx) => {
 });
 
 // --- /status ---
+const BOT_START_TIME = Date.now();
+
 bot.command("status", async (ctx) => {
+  const userId = ctx.from!.id;
+  const session = getSession(userId);
   const cpus = os.cpus();
   const totalMem = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
   const freeMem = (os.freemem() / 1024 / 1024 / 1024).toFixed(2);
   const usedMem = (Number(totalMem) - Number(freeMem)).toFixed(2);
-  const uptimeHours = (os.uptime() / 3600).toFixed(1);
+  const uptimeSys = (os.uptime() / 3600).toFixed(1);
+  const uptimeBot = ((Date.now() - BOT_START_TIME) / 3600000).toFixed(1);
+  const platform = process.platform === "win32" ? "Windows" : "Linux";
+  const label = session.sessionId ? sessionLabels[session.sessionId] : null;
+  const shortId = session.sessionId ? session.sessionId.slice(-8) : "—";
+  const timeoutMin = Math.round(session.timeout / 60000);
+
+  // Count total sessions
+  const ocSessions = await getOpenCodeSessions();
+  const totalSessions = ocSessions.length;
+
+  // Disk usage (best effort)
+  let diskInfo = "";
+  try {
+    if (process.platform !== "win32") {
+      const { stdout } = await execAsync("df -h / | tail -1 | awk '{print $3\"/\"$2\" (\"$5\" used)\"}'", { timeout: 5000 });
+      diskInfo = stdout.trim();
+    } else {
+      const { stdout } = await execAsync("powershell -c \"$d=(Get-PSDrive C); '{0:N1}/{1:N1} GB ({2}% used)' -f (($d.Used)/1GB),(($d.Used+$d.Free)/1GB),([math]::Round($d.Used/($d.Used+$d.Free)*100))\"", { timeout: 5000 });
+      diskInfo = stdout.trim();
+    }
+  } catch {}
 
   await ctx.reply(
-    `📊 <b>System Status</b>\n\n` +
-      `🖥️ ${os.type()} ${os.release()}\n` +
-      `🧠 ${cpus[0]?.model || "?"} (${cpus.length} cores)\n` +
-      `💾 RAM: ${usedMem} / ${totalMem} GB\n` +
-      `⏱️ Uptime: ${uptimeHours} jam`,
+    `📊 <b>Status</b>\n\n` +
+      `<b>🤖 Bot:</b>\n` +
+      `• Platform: ${platform}\n` +
+      `• Bot uptime: ${uptimeBot} jam\n` +
+      `• Node: ${process.version}\n\n` +
+      `<b>🧵 Session:</b>\n` +
+      `• Aktif: <code>${shortId}</code>${label ? ` [${label}]` : ""}\n` +
+      `• Model: <code>${session.model}</code>\n` +
+      `• Agent: <code>${session.agent}</code>\n` +
+      `• Dir: <code>${session.workDir}</code>\n` +
+      `• Timeout: ${timeoutMin} menit\n` +
+      `• Total sessions: ${totalSessions}\n\n` +
+      `<b>🖥️ System:</b>\n` +
+      `• OS: ${os.type()} ${os.release()}\n` +
+      `• CPU: ${cpus[0]?.model || "?"} (${cpus.length} cores)\n` +
+      `• RAM: ${usedMem} / ${totalMem} GB\n` +
+      (diskInfo ? `• Disk: ${diskInfo}\n` : "") +
+      `• Uptime: ${uptimeSys} jam`,
     { parse_mode: "HTML" }
   );
 });
