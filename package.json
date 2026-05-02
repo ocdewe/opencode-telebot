@@ -9,7 +9,7 @@
     "dev": "tsx src/index.ts"
   },
   "keywords": ["opencode", "telegram", "bot", "remote", "coding", "ai"],
-  "author": "ocdewe",
+  "author": "Tri Yudhi Prawira",
   "license": "MIT",
   "repository": {
     "type": "git",
