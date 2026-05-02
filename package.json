@@ -1,0 +1,27 @@
+{
+  "name": "opencode-telegram-remote",
+  "version": "1.0.0",
+  "description": "Control OpenCode from Telegram — full remote coding interface",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "keywords": ["opencode", "telegram", "bot", "remote", "coding", "ai"],
+  "author": "triyuga",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/triyuga/opencode-telebot.git"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "grammy": "^1.35.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
