@@ -23,7 +23,7 @@ const ALLOWED_USER_IDS = (process.env.ALLOWED_USER_IDS || "")
 
 const OPENCODE_PATH = process.env.OPENCODE_PATH || "opencode";
 const WORK_DIR = process.env.WORK_DIR || (process.platform === "win32" ? "C:\\Projects\\tugas-lokal" : "/root/projects");
-const DEFAULT_MODEL = process.env.DEFAULT_MODEL || (process.platform === "win32" ? "enowxlabs/claude-opus-4.6" : "9router/claude-opus-4.6");
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL || (process.platform === "win32" ? "enowxlabs/claude-opus-4.6" : "9router/kr/claude-opus-4.6");
 const MAX_MSG_LENGTH = 4000;
 const DEFAULT_TIMEOUT = 15 * 60 * 1000;
 
@@ -140,7 +140,8 @@ async function getOpenCodeSessions(filterDir?: string): Promise<OcSession[]> {
   try {
     const { stdout } = await execAsync(`${OPENCODE_PATH} session list --format json`, {
       timeout: 10000,
-      env: { ...process.env, PATH: `/root/.opencode/bin:/usr/bin:/usr/local/bin:/bin:${process.env.PATH || ""}` },
+      cwd: WORK_DIR,
+      env: { ...process.env, PATH: `/root/.opencode/bin:/usr/bin:/usr/local/bin:/bin:${process.env.PATH || ""}`, OPENCODE_RUN_ID: "", OPENCODE_PID: "", OPENCODE_PROCESS_ROLE: "", OPENCODE: "" },
     });
 
     const raw = JSON.parse(stdout.trim());
@@ -198,6 +199,48 @@ function escapeHtml(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
+// --- Helper: Convert Markdown to Telegram HTML ---
+function markdownToHtml(text: string): string {
+  // Split by code blocks first to handle them separately
+  const parts = text.split(/(```[\s\S]*?```)/g);
+  
+  const converted = parts.map((part, i) => {
+    // Code blocks — escape HTML inside, wrap in <pre><code>
+    if (part.startsWith("```")) {
+      const content = part.replace(/```[\w]*\n?/, "").replace(/\n?```$/, "");
+      return `<pre><code>${escapeHtml(content)}</code></pre>`;
+    }
+
+    // Regular text — escape first, then apply markdown
+    let result = escapeHtml(part);
+
+    // Inline code (`...`) → <code>...</code>
+    result = result.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+
+    // Bold+Italic (***...***)
+    result = result.replace(/\*\*\*(.+?)\*\*\*/g, "<b><i>$1</i></b>");
+
+    // Bold (**...**)
+    result = result.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+
+    // Italic (*...*)
+    result = result.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, "<i>$1</i>");
+
+    // Strikethrough (~~...~~)
+    result = result.replace(/~~(.+?)~~/g, "<s>$1</s>");
+
+    // Headers (## ...) → bold
+    result = result.replace(/^#{1,6}\s+(.+)$/gm, "<b>$1</b>");
+
+    // Bullet points (- item or * item at start of line) → • item
+    result = result.replace(/^[\-]\s+/gm, "• ");
+
+    return result;
+  });
+
+  return converted.join("");
+}
+
 // --- Helper: Send long message (split if needed) ---
 async function sendLongMessage(ctx: any, text: string, parseMode?: "HTML") {
   if (!text || !text.trim()) {
@@ -212,10 +255,23 @@ async function sendLongMessage(ctx: any, text: string, parseMode?: "HTML") {
   const chunks: string[] = [];
 
   let current = "";
+  let inCodeBlock = false;
+
   for (const line of clean.split("\n")) {
+    // Track code block state
+    if (line.startsWith("<pre><code>") || line.includes("<pre><code>")) inCodeBlock = true;
+    if (line.includes("</code></pre>")) inCodeBlock = false;
+
     if ((current + "\n" + line).length > maxLen && current.length > 0) {
-      chunks.push(current);
-      current = line;
+      // If we're inside a code block, close it before splitting
+      if (inCodeBlock) {
+        current += "\n</code></pre>";
+        chunks.push(current);
+        current = "<pre><code>" + line;
+      } else {
+        chunks.push(current);
+        current = line;
+      }
     } else {
       current = current ? current + "\n" + line : line;
     }
@@ -262,6 +318,15 @@ function parseOpenCodeOutput(raw: string): { text: string; toolUses: string[]; s
       if (event.sessionID) sessionId = event.sessionID;
       if (event.type === "text" && event.part?.text) {
         textParts.push(event.part.text);
+      }
+      // Capture tool output (bash, read, etc.)
+      if ((event.type === "tool_use" || event.type === "tool-use") && event.part?.state?.output) {
+        const tool = event.part?.tool || "";
+        const output = event.part.state.output;
+        // Only include substantial output (skip tiny outputs)
+        if (output.trim().length > 0 && ["bash", "read", "grep", "glob"].includes(tool)) {
+          textParts.push(`\n\`\`\`\n${output.trim()}\n\`\`\`\n`);
+        }
       }
       const toolInfo = parseToolInfo(event);
       if (toolInfo) toolUses.push(toolInfo);
@@ -456,7 +521,11 @@ async function runOpenCode(
         console.log(`📥 [User ${userId}] ← ${parsed.text.length}ch, ${parsed.toolUses.length} tools, exit:${code}`);
 
         if (parsed.text) {
-          const tools = parsed.toolUses.length > 0 ? `\n\n🛠️ ${parsed.toolUses.join("\n🛠️ ")}` : "";
+          let tools = "";
+          if (parsed.toolUses.length > 0) {
+            const toolList = parsed.toolUses.join("\n");
+            tools = `\n\n<blockquote expandable>🛠 Tools (${parsed.toolUses.length})\n${toolList}</blockquote>`;
+          }
           resolve(parsed.text + tools);
         } else {
           resolve(`(No text, exit ${code})\n\nRaw:\n${output.slice(0, 3000)}`);
@@ -1080,6 +1149,48 @@ bot.command("reset", async (ctx) => {
   await ctx.reply("🔄 Reset! Session cleared, siap terima pesan baru.");
 });
 
+// --- /models ---
+bot.command("models", async (ctx) => {
+  const userId = ctx.from!.id;
+  const session = getSession(userId);
+
+  // Baca config OpenCode
+  const configPath = path.join(os.homedir(), ".config", "opencode", "opencode.json");
+  let configData: any = {};
+  try {
+    configData = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  } catch {
+    await ctx.reply("❌ Gagal baca config OpenCode.");
+    return;
+  }
+
+  const providers = configData.provider || {};
+  const lines: string[] = [];
+  let total = 0;
+
+  for (const [provId, prov] of Object.entries(providers) as any[]) {
+    const models = prov.models || {};
+    const modelIds = Object.keys(models);
+    if (modelIds.length === 0) continue;
+
+    lines.push(`\n<b>📦 ${prov.name || provId}</b> (${modelIds.length} model)`);
+
+    for (const modelId of modelIds) {
+      const m = models[modelId];
+      const ctx_limit = m.limit?.context ? `${(m.limit.context / 1000).toFixed(0)}k` : "?";
+      const out_limit = m.limit?.output ? `${(m.limit.output / 1000).toFixed(0)}k` : "?";
+      const active = `${provId}/${modelId}` === session.model ? " ✅" : "";
+      lines.push(`• <code>${provId}/${modelId}</code>${active}\n  ctx:${ctx_limit} out:${out_limit}`);
+      total++;
+    }
+  }
+
+  const header = `🧠 <b>Available Models</b> (${total} total)\n` +
+    `Aktif: <code>${session.model}</code>\n`;
+
+  await sendLongMessage(ctx, header + lines.join("\n") + `\n\n💡 Ganti: /model &lt;provider/model&gt;`, "HTML");
+});
+
 // --- /shell ---
 bot.command("shell", async (ctx) => {
   const command = ctx.match;
@@ -1263,7 +1374,7 @@ bot.on("message:photo", async (ctx) => {
 
     console.log(`⏱️ Response in ${elapsed}s (${reply.length} chars)`);
 
-    await sendLongMessage(ctx, reply);
+    await sendLongMessage(ctx, markdownToHtml(reply), "HTML");
   } catch (err: any) {
     console.log(`❌ Photo handler error: ${err.message}`);
     try { await ctx.reply(`❌ Error: ${err.message?.slice(0, 200)}`); } catch {}
@@ -1300,7 +1411,7 @@ bot.on("message:document", async (ctx) => {
 
     console.log(`⏱️ Response in ${elapsed}s (${reply.length} chars)`);
 
-    await sendLongMessage(ctx, reply);
+    await sendLongMessage(ctx, markdownToHtml(reply), "HTML");
   } catch (err: any) {
     console.log(`❌ Doc handler error: ${err.message}`);
     try { await ctx.reply(`❌ Error: ${err.message?.slice(0, 200)}`); } catch {}
@@ -1326,7 +1437,7 @@ bot.on("message:text", async (ctx) => {
 
     console.log(`⏱️ Response in ${elapsed}s (${reply.length} chars)`);
 
-    await sendLongMessage(ctx, reply);
+    await sendLongMessage(ctx, markdownToHtml(reply), "HTML");
   } catch (err: any) {
     console.log(`❌ Handler error: ${err.message}`);
     try { await ctx.reply(`❌ Error: ${err.message?.slice(0, 200)}`); } catch {}
@@ -1351,6 +1462,7 @@ bot.api.setMyCommands([
   { command: "stop", description: "🛑 Stop/interrupt proses" },
   { command: "timeout", description: "⏱️ Set timeout (menit)" },
   { command: "extend", description: "⏱️+ Tambah waktu saat jalan" },
+  { command: "models", description: "🧠 List semua model available" },
   { command: "shell", description: "⚡ Shell command" },
   { command: "status", description: "📊 Info sistem" },
   { command: "reset", description: "🔄 Force reset" },
