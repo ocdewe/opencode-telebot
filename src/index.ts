@@ -366,6 +366,85 @@ function markdownToHtml(text: string): string {
 }
 
 // --- Helper: Send long message (split if needed) ---
+function splitHtmlMessage(text: string, maxLen: number): string[] {
+  const tagRegex = /(<\/?(?:pre|code|b|i|s)>)/g;
+  const parts = text.split(tagRegex).filter(Boolean);
+  const chunks: string[] = [];
+  const openTags: string[] = [];
+
+  let current = "";
+
+  function openingPrefix() {
+    return openTags.map((tag) => `<${tag}>`).join("");
+  }
+
+  function closingSuffix() {
+    return [...openTags].reverse().map((tag) => `</${tag}>`).join("");
+  }
+
+  function pushChunk() {
+    if (!current) return;
+    chunks.push(current + closingSuffix());
+    current = openingPrefix();
+  }
+
+  function appendTextSafely(segment: string) {
+    let remaining = segment;
+
+    while (remaining.length > 0) {
+      const available = maxLen - (current.length + closingSuffix().length);
+
+      if (available <= 0) {
+        pushChunk();
+        continue;
+      }
+
+      if (remaining.length <= available) {
+        current += remaining;
+        break;
+      }
+
+      let splitAt = remaining.lastIndexOf("\n", available);
+      if (splitAt <= 0) splitAt = remaining.lastIndexOf(" ", available);
+      if (splitAt <= 0) splitAt = available;
+
+      current += remaining.slice(0, splitAt);
+      pushChunk();
+      remaining = remaining.slice(splitAt).replace(/^\s+/, "");
+    }
+  }
+
+  for (const part of parts) {
+    const tagMatch = part.match(/^<(\/)?(pre|code|b|i|s)>$/);
+    if (tagMatch) {
+      const isClosing = Boolean(tagMatch[1]);
+      const tagName = tagMatch[2];
+      const candidate = current + part + closingSuffix();
+
+      if (!isClosing && candidate.length > maxLen && current) {
+        pushChunk();
+      }
+
+      current += part;
+
+      if (isClosing) {
+        const idx = openTags.lastIndexOf(tagName);
+        if (idx !== -1) openTags.splice(idx, 1);
+      } else {
+        openTags.push(tagName);
+      }
+    } else {
+      appendTextSafely(part);
+    }
+  }
+
+  if (current) {
+    chunks.push(current + closingSuffix());
+  }
+
+  return chunks.filter((chunk) => chunk.trim().length > 0);
+}
+
 async function sendLongMessage(ctx: any, text: string, parseMode?: "HTML") {
   if (!text || !text.trim()) {
     await ctx.reply("(empty response)");
@@ -376,31 +455,7 @@ async function sendLongMessage(ctx: any, text: string, parseMode?: "HTML") {
   const clean = text.replace(/\x00/g, "").replace(/[\x01-\x08\x0B\x0C\x0E-\x1F]/g, "");
 
   const maxLen = 4000;
-  const chunks: string[] = [];
-
-  let current = "";
-  let inCodeBlock = false;
-
-  for (const line of clean.split("\n")) {
-    // Track code block state
-    if (line.startsWith("<pre><code>") || line.includes("<pre><code>")) inCodeBlock = true;
-    if (line.includes("</code></pre>")) inCodeBlock = false;
-
-    if ((current + "\n" + line).length > maxLen && current.length > 0) {
-      // If we're inside a code block, close it before splitting
-      if (inCodeBlock) {
-        current += "\n</code></pre>";
-        chunks.push(current);
-        current = "<pre><code>" + line;
-      } else {
-        chunks.push(current);
-        current = line;
-      }
-    } else {
-      current = current ? current + "\n" + line : line;
-    }
-  }
-  if (current) chunks.push(current);
+  const chunks = parseMode === "HTML" ? splitHtmlMessage(clean, maxLen) : [truncate(clean, maxLen)];
 
   console.log(`📨 Sending ${chunks.length} chunk(s), total ${clean.length} chars`);
 
