@@ -252,6 +252,41 @@ function getModelsByProvider(providerId: string) {
   return getModelChoices().filter((choice) => choice.id.startsWith(`${providerId}/`));
 }
 
+async function getServiceHealthSummary() {
+  const services = ["telebot", "kiro-refresh", "9router", "cloudflared-enowxai", "nginx"];
+  const results: Array<{ name: string; state: string; since: string; note: string }> = [];
+
+  for (const service of services) {
+    try {
+      const { stdout } = await execAsync(
+        `systemctl show ${service} --property=ActiveState,SubState,ActiveEnterTimestamp --value`,
+        { timeout: 5000 }
+      );
+      const [activeState = "unknown", subState = "unknown", activeEnter = ""] = stdout.trim().split("\n");
+
+      results.push({
+        name: service,
+        state: `${activeState}/${subState}`,
+        since: activeEnter || "-",
+        note:
+          service === "telebot"
+            ? "bot Telegram OpenCode"
+            : service === "kiro-refresh"
+              ? "refresh token Kiro"
+              : service === "9router"
+                ? "router model lokal"
+                : service === "cloudflared-enowxai"
+                  ? "tunnel Cloudflare"
+                  : "reverse proxy",
+      });
+    } catch {
+      results.push({ name: service, state: "error", since: "-", note: "gagal dibaca" });
+    }
+  }
+
+  return results;
+}
+
 // --- Helper: Convert Markdown to Telegram HTML ---
 function markdownToHtml(text: string): string {
   // Split by code blocks first to handle them separately
@@ -659,7 +694,8 @@ bot.command("help", async (ctx) => {
       `• /reset — Force reset (kalau stuck)\n\n` +
       `<b>🔧 System:</b>\n` +
       `• /shell &lt;cmd&gt; — Jalanin shell command\n` +
-      `• /status — Info sistem\n\n` +
+      `• /status — Info sistem\n` +
+      `• /healthz — Ringkasan health service\n\n` +
       `<b>📦 Models:</b> opus-4.6, sonnet-4.5\n` +
       `<b>🤖 Agents:</b> build, plan`,
     { parse_mode: "HTML" }
@@ -1447,6 +1483,16 @@ bot.command("status", async (ctx) => {
   );
 });
 
+bot.command("healthz", async (ctx) => {
+  const health = await getServiceHealthSummary();
+  const lines = health.map((item) => {
+    const icon = item.state.startsWith("active/") ? "✅" : item.state === "error" ? "⚠️" : "❌";
+    return `${icon} <code>${item.name}</code>\n• State: ${escapeHtml(item.state)}\n• Since: ${escapeHtml(item.since)}\n• Note: ${escapeHtml(item.note)}`;
+  });
+
+  await ctx.reply(`🩺 <b>Health Check</b>\n\n${lines.join("\n\n")}`, { parse_mode: "HTML" });
+});
+
 // --- /id ---
 bot.command("id", async (ctx) => {
   await ctx.reply(`🆔 <code>${ctx.from?.id}</code>`, { parse_mode: "HTML" });
@@ -1573,6 +1619,7 @@ bot.api.setMyCommands([
   { command: "models", description: "🧠 List semua model available" },
   { command: "shell", description: "⚡ Shell command" },
   { command: "status", description: "📊 Info sistem" },
+  { command: "healthz", description: "🩺 Health service" },
   { command: "reset", description: "🔄 Force reset" },
 ]);
 
