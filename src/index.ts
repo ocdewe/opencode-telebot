@@ -287,6 +287,42 @@ async function getServiceHealthSummary() {
   return results;
 }
 
+async function getServiceDiagSummary() {
+  const services = ["telebot", "kiro-refresh", "9router", "cloudflared-enowxai", "nginx"];
+  const results: Array<{ name: string; state: string; pid: string; memory: string; lastLog: string }> = [];
+
+  for (const service of services) {
+    try {
+      const [{ stdout: metaOut }, { stdout: logOut }] = await Promise.all([
+        execAsync(`systemctl show ${service} --property=ActiveState,SubState,MainPID,MemoryCurrent --value`, { timeout: 5000 }),
+        execAsync(`journalctl -u ${service} -n 1 --no-pager`, { timeout: 5000 }),
+      ]);
+
+      const [activeState = "unknown", subState = "unknown", mainPid = "0", memoryCurrent = "0"] = metaOut.trim().split("\n");
+      const memoryMb = Number(memoryCurrent) > 0 ? `${(Number(memoryCurrent) / 1024 / 1024).toFixed(1)} MB` : "-";
+      const lastLogLine = logOut.trim().split("\n").pop() || "-";
+
+      results.push({
+        name: service,
+        state: `${activeState}/${subState}`,
+        pid: mainPid === "0" ? "-" : mainPid,
+        memory: memoryMb,
+        lastLog: lastLogLine,
+      });
+    } catch (error: any) {
+      results.push({
+        name: service,
+        state: "error",
+        pid: "-",
+        memory: "-",
+        lastLog: error?.message || "gagal dibaca",
+      });
+    }
+  }
+
+  return results;
+}
+
 // --- Helper: Convert Markdown to Telegram HTML ---
 function markdownToHtml(text: string): string {
   // Split by code blocks first to handle them separately
@@ -695,7 +731,8 @@ bot.command("help", async (ctx) => {
       `<b>🔧 System:</b>\n` +
       `• /shell &lt;cmd&gt; — Jalanin shell command\n` +
       `• /status — Info sistem\n` +
-      `• /healthz — Ringkasan health service\n\n` +
+      `• /healthz — Ringkasan health service\n` +
+      `• /diag — Diagnosa service & session\n\n` +
       `<b>📦 Models:</b> opus-4.6, sonnet-4.5\n` +
       `<b>🤖 Agents:</b> build, plan`,
     { parse_mode: "HTML" }
@@ -1493,6 +1530,30 @@ bot.command("healthz", async (ctx) => {
   await ctx.reply(`🩺 <b>Health Check</b>\n\n${lines.join("\n\n")}`, { parse_mode: "HTML" });
 });
 
+bot.command("diag", async (ctx) => {
+  const userId = ctx.from!.id;
+  const session = getSession(userId);
+  const diag = await getServiceDiagSummary();
+  const shortId = session.sessionId ? session.sessionId.slice(-8) : "—";
+
+  const lines = diag.map((item) => {
+    const icon = item.state.startsWith("active/") ? "✅" : item.state === "error" ? "⚠️" : "❌";
+    return `${icon} <code>${item.name}</code>\n• State: ${escapeHtml(item.state)}\n• PID: ${escapeHtml(item.pid)}\n• Mem: ${escapeHtml(item.memory)}\n• Log: <code>${escapeHtml(truncate(item.lastLog, 160))}</code>`;
+  });
+
+  await sendLongMessage(
+    ctx,
+    `🧪 <b>Diag</b>\n\n` +
+      `<b>🧵 Session Aktif:</b>\n` +
+      `• ID: <code>${escapeHtml(shortId)}</code>\n` +
+      `• Model: <code>${escapeHtml(session.model)}</code>\n` +
+      `• Agent: <code>${escapeHtml(session.agent)}</code>\n` +
+      `• Dir: <code>${escapeHtml(session.workDir)}</code>\n\n` +
+      lines.join("\n\n"),
+    "HTML"
+  );
+});
+
 // --- /id ---
 bot.command("id", async (ctx) => {
   await ctx.reply(`🆔 <code>${ctx.from?.id}</code>`, { parse_mode: "HTML" });
@@ -1620,6 +1681,7 @@ bot.api.setMyCommands([
   { command: "shell", description: "⚡ Shell command" },
   { command: "status", description: "📊 Info sistem" },
   { command: "healthz", description: "🩺 Health service" },
+  { command: "diag", description: "🧪 Diagnosa detail" },
   { command: "reset", description: "🔄 Force reset" },
 ]);
 
