@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import os from "os";
@@ -197,6 +197,59 @@ function escapeHtml(text: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function getOpenCodeConfig(): any | null {
+  const configPath = path.join(os.homedir(), ".config", "opencode", "opencode.json");
+  try {
+    return JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+function getModelChoices() {
+  const configData = getOpenCodeConfig();
+  if (!configData) return [] as Array<{ id: string; label: string; activeLabel: string }>;
+
+  const providers = configData.provider || {};
+  const items: Array<{ id: string; label: string; activeLabel: string }> = [];
+
+  for (const [provId, prov] of Object.entries(providers) as any[]) {
+    const models = prov.models || {};
+    for (const modelId of Object.keys(models)) {
+      const fullId = `${provId}/${modelId}`;
+      const name = models[modelId]?.name || modelId;
+      items.push({
+        id: fullId,
+        label: `${provId}: ${name}`,
+        activeLabel: name,
+      });
+    }
+  }
+
+  return items;
+}
+
+function getProviderChoices() {
+  const configData = getOpenCodeConfig();
+  if (!configData) return [] as Array<{ id: string; name: string; count: number }>;
+
+  const providers = configData.provider || {};
+  const items: Array<{ id: string; name: string; count: number }> = [];
+
+  for (const [provId, prov] of Object.entries(providers) as any[]) {
+    const models = prov.models || {};
+    const count = Object.keys(models).length;
+    if (count === 0) continue;
+    items.push({ id: provId, name: prov.name || provId, count });
+  }
+
+  return items;
+}
+
+function getModelsByProvider(providerId: string) {
+  return getModelChoices().filter((choice) => choice.id.startsWith(`${providerId}/`));
 }
 
 // --- Helper: Convert Markdown to Telegram HTML ---
@@ -1154,41 +1207,96 @@ bot.command("models", async (ctx) => {
   const userId = ctx.from!.id;
   const session = getSession(userId);
 
-  // Baca config OpenCode
-  const configPath = path.join(os.homedir(), ".config", "opencode", "opencode.json");
-  let configData: any = {};
-  try {
-    configData = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-  } catch {
+  const providers = getProviderChoices();
+  if (providers.length === 0) {
     await ctx.reply("❌ Gagal baca config OpenCode.");
     return;
   }
 
-  const providers = configData.provider || {};
-  const lines: string[] = [];
-  let total = 0;
-
-  for (const [provId, prov] of Object.entries(providers) as any[]) {
-    const models = prov.models || {};
-    const modelIds = Object.keys(models);
-    if (modelIds.length === 0) continue;
-
-    lines.push(`\n<b>📦 ${prov.name || provId}</b> (${modelIds.length} model)`);
-
-    for (const modelId of modelIds) {
-      const m = models[modelId];
-      const ctx_limit = m.limit?.context ? `${(m.limit.context / 1000).toFixed(0)}k` : "?";
-      const out_limit = m.limit?.output ? `${(m.limit.output / 1000).toFixed(0)}k` : "?";
-      const active = `${provId}/${modelId}` === session.model ? " ✅" : "";
-      lines.push(`• <code>${provId}/${modelId}</code>${active}\n  ctx:${ctx_limit} out:${out_limit}`);
-      total++;
-    }
+  const keyboard = new InlineKeyboard();
+  for (const provider of providers) {
+    keyboard.text(`${provider.name} (${provider.count})`.slice(0, 60), `modelprov:${provider.id}`).row();
   }
 
-  const header = `🧠 <b>Available Models</b> (${total} total)\n` +
-    `Aktif: <code>${session.model}</code>\n`;
+  await ctx.reply(
+    `🧠 <b>Model Picker</b>\nAktif: <code>${escapeHtml(session.model)}</code>\n\nPilih provider dulu.`,
+    {
+      parse_mode: "HTML",
+      reply_markup: keyboard,
+    }
+  );
+});
 
-  await sendLongMessage(ctx, header + lines.join("\n") + `\n\n💡 Ganti: /model &lt;provider/model&gt;`, "HTML");
+bot.callbackQuery(/^modelprov:(.+)$/, async (ctx) => {
+  const userId = ctx.from.id;
+  const session = getSession(userId);
+  const providerId = ctx.match[1];
+  const providers = getProviderChoices();
+  const provider = providers.find((p) => p.id === providerId);
+
+  if (!provider) {
+    await ctx.answerCallbackQuery({ text: "Provider tidak ditemukan", show_alert: true });
+    return;
+  }
+
+  const models = getModelsByProvider(providerId);
+  const keyboard = new InlineKeyboard();
+  for (const model of models) {
+    const active = model.id === session.model ? "✅ " : "";
+    keyboard.text(`${active}${model.activeLabel}`.slice(0, 60), `setmodel:${model.id}`).row();
+  }
+  keyboard.text("⬅️ Kembali", "modelprovback");
+
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageText(
+    `🧠 <b>${escapeHtml(provider.name)}</b>\nAktif: <code>${escapeHtml(session.model)}</code>\n\nPilih model:`,
+    {
+      parse_mode: "HTML",
+      reply_markup: keyboard,
+    }
+  );
+});
+
+bot.callbackQuery("modelprovback", async (ctx) => {
+  const userId = ctx.from.id;
+  const session = getSession(userId);
+  const providers = getProviderChoices();
+  const keyboard = new InlineKeyboard();
+
+  for (const provider of providers) {
+    keyboard.text(`${provider.name} (${provider.count})`.slice(0, 60), `modelprov:${provider.id}`).row();
+  }
+
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageText(
+    `🧠 <b>Model Picker</b>\nAktif: <code>${escapeHtml(session.model)}</code>\n\nPilih provider dulu.`,
+    {
+      parse_mode: "HTML",
+      reply_markup: keyboard,
+    }
+  );
+});
+
+bot.callbackQuery(/^setmodel:(.+)$/, async (ctx) => {
+  const userId = ctx.from.id;
+  const session = getSession(userId);
+  const modelId = ctx.match[1];
+  const choices = getModelChoices();
+  const exists = choices.some((c) => c.id === modelId);
+
+  if (!exists) {
+    await ctx.answerCallbackQuery({ text: "Model tidak ditemukan", show_alert: true });
+    return;
+  }
+
+  session.model = modelId;
+  saveSessionState();
+
+  await ctx.answerCallbackQuery({ text: `Model aktif: ${modelId}` });
+  await ctx.editMessageText(
+    `✅ <b>Model diubah</b>\nAktif sekarang: <code>${escapeHtml(modelId)}</code>`,
+    { parse_mode: "HTML" }
+  );
 });
 
 // --- /shell ---
