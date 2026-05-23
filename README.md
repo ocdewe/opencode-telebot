@@ -194,8 +194,27 @@ opencode-telebot/
 ├── telebot.service       # Systemd service definition
 ├── run_oc.sh             # Linux wrapper script (output capture)
 ├── .env.example          # Environment template
+├── MEMORY.md             # Long-term repo context
+├── HEARTBEAT.md          # Active feature/runtime notes
+├── RESTORE-CHECKLIST.md  # Quick restore checklist
+├── SERVICE-STATUS.md     # Service health notes template
+├── scripts/show-recovery-files.sh
 ├── package.json
 └── tsconfig.json
+```
+
+## Recovery Context
+
+Untuk restore cepat atau lanjut kerja setelah pindah mesin, baca file ini:
+
+```text
+README.md -> MEMORY.md -> HEARTBEAT.md -> RESTORE-CHECKLIST.md -> SERVICE-STATUS.md
+```
+
+Tampilkan file recovery penting:
+
+```bash
+bash scripts/show-recovery-files.sh
 ```
 
 ## 📝 Notes
@@ -205,6 +224,7 @@ opencode-telebot/
 - On Linux: uses `run_oc.sh` wrapper with file-based output polling
 - Session state persists to `session-state.json` (auto-created)
 - Session labels persist to `session-labels.json` (auto-created)
+- `.env`, `session-state.json`, dan `session-labels.json` tidak masuk git
 
 ## 📄 License
 
