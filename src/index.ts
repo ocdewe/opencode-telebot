@@ -785,6 +785,7 @@ bot.command("help", async (ctx) => {
       `• /reset — Force reset (kalau stuck)\n\n` +
       `<b>🔧 System:</b>\n` +
       `• /shell &lt;cmd&gt; — Jalanin shell command\n` +
+      `• /restart — Restart service bot\n` +
       `• /status — Info sistem\n` +
       `• /healthz — Ringkasan health service\n` +
       `• /diag — Diagnosa service & session\n\n` +
@@ -1041,6 +1042,29 @@ bot.command("new", async (ctx) => {
   session.busy = false;
   saveSessionState();
   await ctx.reply("🆕 Session baru! Context di-reset.");
+});
+
+// --- /restart --- (restart service bot di systemd)
+bot.command("restart", async (ctx) => {
+  if (process.platform === "win32") {
+    await ctx.reply("⚠️ /restart cuma didukung di Linux (systemd).");
+    return;
+  }
+
+  await ctx.reply("♻️ Restarting telebot service... bot bakal online lagi dalam beberapa detik.");
+
+  // Detached: restart command harus survive walau proses ini kebunuh.
+  // systemd Restart=always bakal otomatis nyalain bot lagi.
+  try {
+    const child = spawn(
+      "systemd-run",
+      ["--on-active=1", "--timer-property=AccuracySec=100ms", "/bin/systemctl", "restart", "telebot.service"],
+      { detached: true, stdio: "ignore", env: { ...process.env, PATH: `/usr/bin:/usr/local/bin:/bin:${process.env.PATH || ""}` } }
+    );
+    child.unref();
+  } catch (err: any) {
+    await ctx.reply(`❌ Gagal trigger restart: ${err.message?.slice(0, 200)}`);
+  }
 });
 
 // --- /continue ---
@@ -1734,6 +1758,7 @@ bot.api.setMyCommands([
   { command: "extend", description: "⏱️+ Tambah waktu saat jalan" },
   { command: "models", description: "🧠 List semua model available" },
   { command: "shell", description: "⚡ Shell command" },
+  { command: "restart", description: "♻️ Restart service bot" },
   { command: "status", description: "📊 Info sistem" },
   { command: "healthz", description: "🩺 Health service" },
   { command: "diag", description: "🧪 Diagnosa detail" },
