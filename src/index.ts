@@ -23,7 +23,7 @@ const ALLOWED_USER_IDS = (process.env.ALLOWED_USER_IDS || "")
 
 const OPENCODE_PATH = process.env.OPENCODE_PATH || "opencode";
 const WORK_DIR = process.env.WORK_DIR || (process.platform === "win32" ? "C:\\Projects\\tugas-lokal" : "/root/projects");
-const DEFAULT_MODEL = process.env.DEFAULT_MODEL || (process.platform === "win32" ? "enowxlabs/claude-opus-4.6" : "9router/kr/claude-opus-4.6");
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL || (process.platform === "win32" ? "enowxlabs/claude-opus-4.6" : "9router/xmtp/mimo-v2.5");
 const MAX_MSG_LENGTH = 4000;
 const DEFAULT_TIMEOUT = 15 * 60 * 1000;
 
