@@ -1563,6 +1563,13 @@ bot.command("status", async (ctx) => {
     }
   }
 
+  // OpenCode version (best effort)
+  let ocVersion = "?";
+  try {
+    const { stdout } = await execAsync(`"${OPENCODE_PATH}" --version`, { timeout: 5000 });
+    ocVersion = stdout.trim().split("\n").pop()?.trim() || "?";
+  } catch {}
+
   // Disk usage (best effort)
   let diskInfo = "";
   try {
@@ -1579,6 +1586,7 @@ bot.command("status", async (ctx) => {
     `📊 <b>Status</b>\n\n` +
       `<b>🤖 Bot:</b>\n` +
       `• Platform: ${platform}\n` +
+      `• OpenCode: <code>${ocVersion}</code>\n` +
       `• Bot uptime: ${uptimeBot} jam\n` +
       `• Node: ${process.version}\n\n` +
       `<b>🧵 Session:</b>\n` +
